@@ -132,8 +132,4 @@ for c in $(docker ps --format '{{.Names}}' | grep '^peer-'); do
 done
 ```
 
-## SSH note (Tailscale SSH vs native SSH)
-- `grants` control network reachability (IP/port)
-- top-level `ssh` policy controls `tailscale ssh`
 
-If you can reach the node but get `tailnet policy does not permit you to SSH to this node`, add an `ssh` rule in tailnet ACL policy.
