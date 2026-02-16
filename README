@@ -1,0 +1,139 @@
+# staging-tailnet-peer-simulator
+
+Practical runbook for creating and managing multiple Tailscale Docker peers.
+
+## What this does
+- Creates `peer-01` ... `peer-10` (or custom range/count/prefix)
+- Persists each peer state in its own Docker volume (`<name>-state`)
+- Uses `tailscale/tailscale:latest`
+
+Script used: `scripts/spawn_10_peers.sh`
+
+## Prerequisites
+- Docker running
+- Tailscale auth key available
+- `/dev/net/tun` available to Docker
+
+Set auth key:
+
+```bash
+export TS_AUTHKEY='your-auth-key'
+```
+
+## Spawn peers (default 10)
+
+```bash
+./scripts/spawn_10_peers.sh
+```
+
+Default naming is zero-padded: `peer-01` to `peer-10`.
+
+## Spawn custom range/count/prefix
+
+```bash
+./scripts/spawn_10_peers.sh <start> <count> <prefix>
+# example:
+./scripts/spawn_10_peers.sh 1 5 lab-peer
+```
+
+## Recreate existing peers (important after config changes)
+If peers already exist and you need new env/config applied:
+
+```bash
+RECREATE_EXISTING=true ./scripts/spawn_10_peers.sh
+```
+
+## Tag behavior
+By default script uses:
+
+```text
+TS_EXTRA_ARGS=--reset
+```
+
+Optional tag usage:
+
+```bash
+export TS_TAGS='tag:container'
+./scripts/spawn_10_peers.sh
+```
+
+Or set full override:
+
+```bash
+export TS_EXTRA_ARGS='--advertise-tags=tag:container --reset'
+./scripts/spawn_10_peers.sh
+```
+
+Note: if ACL/tag ownership does not allow that tag, peers will fail with:
+`requested tags [...] are invalid or not permitted`.
+
+## Check status
+
+Docker status:
+
+```bash
+docker ps -a --format 'table {{.Names}}\t{{.Status}}' | grep '^peer-'
+```
+
+Tailscale status (from your host):
+
+```bash
+tailscale status | grep 'peer-'
+```
+
+Inspect one peer from inside container:
+
+```bash
+docker exec peer-01 tailscale status
+```
+
+## Stop all peers
+
+```bash
+for c in $(docker ps --format '{{.Names}}' | grep '^peer-'); do
+  docker stop "$c"
+done
+```
+
+## Start all peers again
+
+```bash
+for c in $(docker ps -a --format '{{.Names}}' | grep '^peer-'); do
+  docker start "$c"
+done
+```
+
+## Remove one peer completely
+
+```bash
+docker rm -f peer-01
+docker volume rm peer-01-state
+```
+
+## Remove all peers completely
+
+```bash
+for c in $(docker ps -a --format '{{.Names}}' | grep '^peer-'); do
+  docker rm -f "$c"
+done
+
+for v in $(docker volume ls --format '{{.Name}}' | grep '^peer-.*-state$'); do
+  docker volume rm "$v"
+done
+```
+
+## Remove from tailnet identity before stopping (danger zone)
+Use this if you want to explicitly log out nodes before shutdown:
+
+```bash
+for c in $(docker ps --format '{{.Names}}' | grep '^peer-'); do
+  docker exec "$c" tailscale logout
+  docker stop "$c"
+done
+```
+
+## SSH note (Tailscale SSH vs native SSH)
+- `grants` control network reachability (IP/port)
+- top-level `ssh` policy controls `tailscale ssh`
+
+If you can reach the node but get `tailnet policy does not permit you to SSH to this node`, add an `ssh` rule in tailnet ACL policy.
